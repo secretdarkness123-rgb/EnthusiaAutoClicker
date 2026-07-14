@@ -66,7 +66,8 @@ public final class AutoclickerRuntime {
             return;
         }
 
-        boolean safe = inWorld && client.screen == null;
+        // MODIFIED: Bypasses the GUI screen check entirely
+        boolean safe = inWorld; 
         updateContinuousUseTimer(safe, nowMillis);
         if (safe && engine.isEnabled()) {
             AutoclickerExtrasRuntime.TickResult extrasResult = extras.tick(client, nowMillis);
@@ -93,10 +94,29 @@ public final class AutoclickerRuntime {
         if (decision.holdFood()) {
             startOrContinueEating(client);
         } else if (decision.clickRight()) {
-            KeyMapping.click(boundKey(client.options.keyUse));
+            // MODIFIED: Direct packet injection for right click if a GUI is open
+            if (client.screen != null && client.hitResult != null && client.gameMode != null && client.player != null) {
+                client.player.swing(InteractionHand.MAIN_HAND);
+                if (client.hitResult instanceof net.minecraft.world.phys.BlockHitResult blockHit) {
+                    client.gameMode.useItemOn(client.player, InteractionHand.MAIN_HAND, blockHit);
+                }
+            } else {
+                KeyMapping.click(boundKey(client.options.keyUse));
+            }
         }
+        
         if (decision.clickLeft()) {
-            KeyMapping.click(boundKey(client.options.keyAttack));
+            // MODIFIED: Direct packet injection for left click to attack/dig through GUIs
+            if (client.hitResult != null && client.gameMode != null && client.player != null) {
+                client.player.swing(InteractionHand.MAIN_HAND);
+                if (client.hitResult instanceof net.minecraft.world.phys.EntityHitResult entityHit) {
+                    client.gameMode.attack(client.player, entityHit.getEntity());
+                } else if (client.hitResult instanceof net.minecraft.world.phys.BlockHitResult blockHit) {
+                    client.gameMode.useItemOn(client.player, InteractionHand.MAIN_HAND, blockHit);
+                }
+            } else {
+                KeyMapping.click(boundKey(client.options.keyAttack));
+            }
         }
         if (decision.holdRight()) {
             client.options.keyUse.setDown(true);
@@ -161,7 +181,7 @@ public final class AutoclickerRuntime {
     }
 
     private boolean shouldEatOffhand(Minecraft client, long nowMillis) {
-        if (!config.leftEnabled() || !config.foodEnabled() || client.player == null) {
+        if (!config.leftEnabled() || !config.foodEnabled() || client.player != null) {
             return false;
         }
 
@@ -196,7 +216,10 @@ public final class AutoclickerRuntime {
             nextFoodAttemptMillis = nowMillis + DurationParser.MINIMUM_CLICK_INTERVAL_MILLIS;
             client.gameMode.useItem(client.player, InteractionHand.OFF_HAND);
         }
-        if (client.player.isUsingItem() && client.player.getUsedItemHand() == InteractionHand.OFF_HAND) {
+        // MODIFIED: Forces the offhand use packet when a GUI is active to continuously eat
+        if (client.screen != null && client.player.isUsingItem() && client.player.getUsedItemHand() == InteractionHand.OFF_HAND) {
+            client.gameMode.useItem(client.player, InteractionHand.OFF_HAND);
+        } else if (client.player.isUsingItem() && client.player.getUsedItemHand() == InteractionHand.OFF_HAND) {
             client.options.keyUse.setDown(true);
             rightApplied = true;
         }
@@ -224,5 +247,4 @@ public final class AutoclickerRuntime {
         return client.hitResult instanceof EntityHitResult entityHit
             && entityHit.getEntity() instanceof Player;
     }
-
 }
